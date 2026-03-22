@@ -130,6 +130,8 @@ textarea {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
   margin-bottom: $spacing-md;
   gap: 12px;
   flex-wrap: wrap;
@@ -147,7 +149,13 @@ textarea {
     flex: 1;
   }
 
+  > * {
+    min-width: 0;
+  }
+
   .title {
+    flex: 1 1 auto;
+    min-width: 0;
     font-size: 18px;
     font-weight: 700;
     color: var(--text-primary);
