@@ -1088,6 +1088,7 @@
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+  align-items: center;
   margin-bottom: 12px;
 }
 
@@ -1155,6 +1156,10 @@
 }
 
 .monitorCredentialRefreshButton {
+  white-space: nowrap;
+}
+
+.monitorCredentialBulkRefreshButton {
   white-space: nowrap;
 }
 

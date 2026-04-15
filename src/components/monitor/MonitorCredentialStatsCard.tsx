@@ -213,6 +213,17 @@ export function MonitorCredentialStatsCard({
     [codexFileByAuthIndex, codexFileByName]
   );
 
+  const refreshableQuotaKeys = useMemo(() => {
+    const keys = new Set<string>();
+    filteredRows.forEach((row) => {
+      const quotaKey = resolveQuotaKey(row);
+      if (quotaKey && codexFileByName.has(quotaKey)) {
+        keys.add(quotaKey);
+      }
+    });
+    return Array.from(keys);
+  }, [codexFileByName, filteredRows, resolveQuotaKey]);
+
   const windowCosts = useMemo(() => {
     const result = new Map<string, { fiveHourCost: number | null; weeklyCost: number | null }>();
 
@@ -245,14 +256,11 @@ export function MonitorCredentialStatsCard({
     return result;
   }, [codexQuota, resolveQuotaKey, rowCosts, rows]);
 
-  const handleRefreshQuota = useCallback(
-    async (row: CredentialRow) => {
-      const quotaKey = resolveQuotaKey(row);
-      if (!quotaKey) return;
+  const refreshQuotaKey = useCallback(
+    async (quotaKey: string) => {
       const authFile = codexFileByName.get(quotaKey);
       if (!authFile) return;
 
-      setRefreshingKeys((prev) => ({ ...prev, [quotaKey]: true }));
       setCodexQuota((prev) => ({
         ...prev,
         [quotaKey]: CODEX_CONFIG.buildLoadingState()
@@ -274,12 +282,53 @@ export function MonitorCredentialStatsCard({
           ...prev,
           [quotaKey]: CODEX_CONFIG.buildErrorState(message, Number.isFinite(status) ? status : undefined)
         }));
+      }
+    },
+    [codexFileByName, setCodexQuota, t]
+  );
+
+  const handleRefreshQuota = useCallback(
+    async (row: CredentialRow) => {
+      const quotaKey = resolveQuotaKey(row);
+      if (!quotaKey) return;
+
+      setRefreshingKeys((prev) => ({ ...prev, [quotaKey]: true }));
+      try {
+        await refreshQuotaKey(quotaKey);
       } finally {
         setRefreshingKeys((prev) => ({ ...prev, [quotaKey]: false }));
       }
     },
-    [codexFileByName, resolveQuotaKey, setCodexQuota, t]
+    [refreshQuotaKey, resolveQuotaKey]
   );
+
+  const isBulkRefreshing = refreshableQuotaKeys.some((quotaKey) => refreshingKeys[quotaKey] === true);
+
+  const handleRefreshAllQuotas = useCallback(async () => {
+    if (refreshableQuotaKeys.length === 0 || isBulkRefreshing) return;
+
+    const nextRefreshingKeys = refreshableQuotaKeys.reduce<Record<string, boolean>>((acc, quotaKey) => {
+      acc[quotaKey] = true;
+      return acc;
+    }, {});
+
+    setRefreshingKeys((prev) => ({
+      ...prev,
+      ...nextRefreshingKeys
+    }));
+
+    try {
+      await Promise.all(refreshableQuotaKeys.map((quotaKey) => refreshQuotaKey(quotaKey)));
+    } finally {
+      setRefreshingKeys((prev) => {
+        const next = { ...prev };
+        refreshableQuotaKeys.forEach((quotaKey) => {
+          next[quotaKey] = false;
+        });
+        return next;
+      });
+    }
+  }, [isBulkRefreshing, refreshQuotaKey, refreshableQuotaKeys]);
 
   const getSortValue = useCallback(
     (row: CredentialRow, key: SortKey) => {
@@ -332,6 +381,16 @@ export function MonitorCredentialStatsCard({
             fullWidth={false}
           />
         </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          className={styles.monitorCredentialBulkRefreshButton}
+          disabled={refreshableQuotaKeys.length === 0 || isBulkRefreshing}
+          loading={isBulkRefreshing}
+          onClick={() => void handleRefreshAllQuotas()}
+        >
+          {t('quota_management.refresh_all_credentials')}
+        </Button>
       </div>
 
       {loading ? (
