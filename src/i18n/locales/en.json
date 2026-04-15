@@ -1617,6 +1617,14 @@
       "header_models": "Top Failed Models",
       "all_failed_models": "All Failed Models"
     },
+    "credential": {
+      "filter_type": "Credential Type",
+      "quota": "Codex Quota",
+      "cost_5h": "5h Cost",
+      "cost_7d": "Weekly Cost",
+      "no_quota": "No quota data",
+      "no_result": "No credential data for the current filter"
+    },
     "logs": {
       "title": "Request Logs",
       "total_count": "{{count}} records",

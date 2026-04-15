@@ -1079,3 +1079,134 @@
     opacity: 0.9;
   }
 }
+
+.monitorCredentialCard {
+  padding: 18px;
+}
+
+.monitorCredentialToolbar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.monitorCredentialToolbarItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.monitorCredentialSelect {
+  min-width: 160px;
+}
+
+.monitorCredentialHint {
+  color: var(--text-tertiary);
+  font-size: 13px;
+  padding: 16px 0 4px;
+}
+
+.monitorCredentialScroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.monitorSortButton {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.monitorCredentialActionHeader {
+  min-width: 220px;
+}
+
+.monitorCredentialNameCell {
+  min-width: 160px;
+}
+
+.monitorCredentialNameWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.monitorCredentialType {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+}
+
+.monitorCredentialActionCell {
+  min-width: 240px;
+}
+
+.monitorCredentialQuotaInline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.monitorCredentialRefreshButton {
+  white-space: nowrap;
+}
+
+.monitorQuotaSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.monitorQuotaChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: $radius-full;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.monitorQuotaMuted {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.monitorQuotaError {
+  color: var(--danger-color, #ef4444);
+  font-size: 11px;
+  word-break: break-word;
+}
+
+.monitorRequestCountCell {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.monitorRequestBreakdown {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.monitorStatSuccess {
+  color: var(--success-color, #22c55e);
+  font-weight: 600;
+}
+
+.monitorStatNeutral {
+  color: var(--warning-color, #f59e0b);
+  font-weight: 600;
+}
+
+.monitorStatFailure {
+  color: var(--danger-color, #ef4444);
+  font-weight: 600;
+}

@@ -1617,6 +1617,14 @@
       "header_models": "主要失败模型",
       "all_failed_models": "所有失败模型"
     },
+    "credential": {
+      "filter_type": "凭证类型",
+      "quota": "Codex 配额",
+      "cost_5h": "5h 花费",
+      "cost_7d": "周花费",
+      "no_quota": "暂无配额数据",
+      "no_result": "当前筛选下没有凭证数据"
+    },
     "logs": {
       "title": "请求日志",
       "total_count": "共 {{count}} 条",

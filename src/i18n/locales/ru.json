@@ -1020,6 +1020,14 @@
     "credential_stats": "Статистика учётных данных",
     "credential_name": "Учётные данные",
     "token_breakdown": "Распределение типов токенов",
+    "credential": {
+      "filter_type": "Тип учетных данных",
+      "quota": "Квота Codex",
+      "cost_5h": "Расход за 5 ч",
+      "cost_7d": "Расход за неделю",
+      "no_quota": "Нет данных по квоте",
+      "no_result": "Нет данных для текущего фильтра"
+    },
     "request_events_title": "События запросов",
     "request_events_filter_model": "Модель",
     "request_events_filter_source": "Источник",

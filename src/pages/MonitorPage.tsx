@@ -23,6 +23,7 @@ import { usageApi, providersApi, authFilesApi } from '@/services/api';
 import { filterDataByApiFilter, filterDataByTimeRange } from '@/utils/monitor';
 import { buildSourceInfoMap } from '@/utils/sourceResolver';
 import { normalizeAuthIndex } from '@/utils/usage';
+import type { AuthFileItem } from '@/types';
 import type { CredentialInfo } from '@/types/sourceInfo';
 import { KpiCards } from '@/components/monitor/KpiCards';
 import { ModelDistributionChart } from '@/components/monitor/ModelDistributionChart';
@@ -31,6 +32,7 @@ import { HourlyModelChart } from '@/components/monitor/HourlyModelChart';
 import { HourlyTokenChart } from '@/components/monitor/HourlyTokenChart';
 import { ChannelStats } from '@/components/monitor/ChannelStats';
 import { FailureAnalysis } from '@/components/monitor/FailureAnalysis';
+import { MonitorCredentialStatsCard } from '@/components/monitor/MonitorCredentialStatsCard';
 import { RequestLogs } from '@/components/monitor/RequestLogs';
 import styles from './MonitorPage.module.scss';
 
@@ -92,6 +94,7 @@ export function MonitorPage() {
   const [providerTypeMap, setProviderTypeMap] = useState<Record<string, string>>({});
   const [sourceInfoMap, setSourceInfoMap] = useState<Map<string, import('@/types/sourceInfo').SourceInfo>>(new Map());
   const [authFileMap, setAuthFileMap] = useState<Map<string, CredentialInfo>>(new Map());
+  const [authFiles, setAuthFiles] = useState<AuthFileItem[]>([]);
 
   // 加载渠道名称映射（支持所有提供商类型）
   const loadProviderMap = useCallback(async () => {
@@ -215,6 +218,7 @@ export function MonitorPage() {
       // 构建 authFileMap（认证文件索引 → 凭证信息）
       const credMap = new Map<string, CredentialInfo>();
       const files = (authFilesResponse as { files?: unknown[] })?.files || [];
+      setAuthFiles(files as AuthFileItem[]);
       files.forEach((file) => {
         if (!file || typeof file !== 'object') return;
         const f = file as Record<string, unknown>;
@@ -351,6 +355,14 @@ export function MonitorPage() {
       {/* 小时级图表 */}
       <HourlyModelChart data={apiFilteredData} loading={loading} isDark={isDark} />
       <HourlyTokenChart data={apiFilteredData} loading={loading} isDark={isDark} />
+
+      <MonitorCredentialStatsCard
+        data={filteredData}
+        loading={loading}
+        sourceInfoMap={sourceInfoMap}
+        authFileMap={authFileMap}
+        authFiles={authFiles}
+      />
 
       {/* 统计表格 */}
       <div className={styles.statsGrid}>
