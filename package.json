@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,scss}\"",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "release:prepare": "bash ./scripts/release-helper.sh",
+    "release:dry-run": "bash ./scripts/release-helper.sh --dry-run",
+    "deploy:management": "bash ./scripts/deploy-management.sh"
   },
   "dependencies": {
     "@codemirror/lang-yaml": "^6.1.2",
