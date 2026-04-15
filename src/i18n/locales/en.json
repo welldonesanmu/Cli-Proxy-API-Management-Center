@@ -1050,6 +1050,7 @@
     "request_events_no_result_desc": "Try different filters or clear the current filters.",
     "request_events_count": "{{count}} events",
     "request_events_limit_hint": "Showing {{shown}} of {{total}} events to keep rendering responsive.",
+    "request_events_tps": "TPS",
     "input_tokens": "Input Tokens",
     "output_tokens": "Output Tokens",
     "last_updated": "Updated"
@@ -1516,6 +1517,9 @@
   },
   "monitor": {
     "title": "Monitor Center",
+    "auto_refresh": "Auto Refresh",
+    "auto_refresh_off": "Off",
+    "auto_refresh_countdown": "Next refresh in {{count}}s",
     "time_range": "Time Range",
     "today": "Today",
     "last_n_days": "Last {{n}} Days",

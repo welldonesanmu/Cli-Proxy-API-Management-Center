@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Select } from '@/components/ui/Select';
+import { useInterval } from '@/hooks/useInterval';
 import { authFilesApi } from '@/services/api/authFiles';
 import type { GeminiKeyConfig, ProviderKeyConfig, OpenAIProviderConfig } from '@/types';
 import type { AuthFileItem } from '@/types/authFile';
@@ -22,6 +23,15 @@ import styles from '@/pages/UsagePage.module.scss';
 
 const ALL_FILTER = '__all__';
 const MAX_RENDERED_EVENTS = 500;
+const AUTO_REFRESH_OFF = 'off';
+const AUTO_REFRESH_INTERVALS = {
+  '15s': 15_000,
+  '30s': 30_000,
+  '1m': 60_000,
+  '5m': 300_000,
+} as const;
+
+type AutoRefreshValue = keyof typeof AUTO_REFRESH_INTERVALS | typeof AUTO_REFRESH_OFF;
 
 type RequestEventRow = {
   id: string;
@@ -35,6 +45,7 @@ type RequestEventRow = {
   authIndex: string;
   failed: boolean;
   latencyMs: number | null;
+  tps: number | null;
   inputTokens: number;
   outputTokens: number;
   reasoningTokens: number;
@@ -50,6 +61,8 @@ export interface RequestEventsDetailsCardProps {
   codexConfigs: ProviderKeyConfig[];
   vertexConfigs: ProviderKeyConfig[];
   openaiProviders: OpenAIProviderConfig[];
+  onRefresh?: () => Promise<void> | void;
+  lastRefreshedAt?: Date | null;
 }
 
 const toNumber = (value: unknown): number => {
@@ -73,6 +86,8 @@ export function RequestEventsDetailsCard({
   codexConfigs,
   vertexConfigs,
   openaiProviders,
+  onRefresh,
+  lastRefreshedAt,
 }: RequestEventsDetailsCardProps) {
   const { t, i18n } = useTranslation();
   const latencyHint = t('usage_stats.latency_unit_hint', {
@@ -83,7 +98,10 @@ export function RequestEventsDetailsCard({
   const [modelFilter, setModelFilter] = useState(ALL_FILTER);
   const [sourceFilter, setSourceFilter] = useState(ALL_FILTER);
   const [authIndexFilter, setAuthIndexFilter] = useState(ALL_FILTER);
+  const [autoRefreshValue, setAutoRefreshValue] = useState<AutoRefreshValue>(AUTO_REFRESH_OFF);
   const [authFileMap, setAuthFileMap] = useState<Map<string, CredentialInfo>>(new Map());
+  const [nextRefreshAtMs, setNextRefreshAtMs] = useState<number | null>(null);
+  const [countdownNowMs, setCountdownNowMs] = useState(() => Date.now());
 
   useEffect(() => {
     let cancelled = false;
@@ -121,6 +139,52 @@ export function RequestEventsDetailsCard({
       }),
     [claudeConfigs, codexConfigs, geminiKeys, openaiProviders, vertexConfigs]
   );
+
+  const autoRefreshOptions = useMemo(
+    () => [
+      { value: AUTO_REFRESH_OFF, label: t('monitor.auto_refresh_off') },
+      { value: '15s', label: '15s' },
+      { value: '30s', label: '30s' },
+      { value: '1m', label: '1m' },
+      { value: '5m', label: '5m' },
+    ],
+    [t]
+  );
+  const autoRefreshDelay =
+    onRefresh && autoRefreshValue !== AUTO_REFRESH_OFF
+      ? AUTO_REFRESH_INTERVALS[autoRefreshValue]
+      : null;
+
+  useEffect(() => {
+    if (!autoRefreshDelay) {
+      setNextRefreshAtMs(null);
+      return;
+    }
+
+    const now = Date.now();
+    setCountdownNowMs(now);
+
+    const nextFromRefresh = lastRefreshedAt ? lastRefreshedAt.getTime() + autoRefreshDelay : null;
+    const nextRefreshAt =
+      nextFromRefresh && nextFromRefresh > now ? nextFromRefresh : now + autoRefreshDelay;
+
+    setNextRefreshAtMs(nextRefreshAt);
+  }, [autoRefreshDelay, lastRefreshedAt]);
+
+  useInterval(() => {
+    setCountdownNowMs(Date.now());
+  }, autoRefreshDelay ? 1000 : null);
+
+  useInterval(() => {
+    if (!onRefresh || loading || !autoRefreshDelay) return;
+    setNextRefreshAtMs(Date.now() + autoRefreshDelay);
+    void onRefresh();
+  }, autoRefreshDelay);
+
+  const autoRefreshCountdown =
+    autoRefreshDelay && nextRefreshAtMs
+      ? Math.max(0, Math.ceil((nextRefreshAtMs - countdownNowMs) / 1000))
+      : null;
 
   const rows = useMemo<RequestEventRow[]>(() => {
     const details = collectUsageDetails(usage);
@@ -160,6 +224,7 @@ export function RequestEventsDetailsCard({
           extractTotalTokens(detail)
         );
         const latencyMs = extractLatencyMs(detail);
+        const tps = latencyMs && latencyMs > 0 ? outputTokens / (latencyMs / 1000) : null;
 
         return {
           id: `${timestamp}-${model}-${sourceRaw || source}-${authIndex}-${index}`,
@@ -173,6 +238,7 @@ export function RequestEventsDetailsCard({
           authIndex,
           failed: detail.failed === true,
           latencyMs,
+          tps,
           inputTokens,
           outputTokens,
           reasoningTokens,
@@ -274,7 +340,7 @@ export function RequestEventsDetailsCard({
       'source_raw',
       'auth_index',
       'result',
-      ...(hasLatencyData ? ['latency_ms'] : []),
+      ...(hasLatencyData ? ['latency_ms', 'tps'] : []),
       'input_tokens',
       'output_tokens',
       'reasoning_tokens',
@@ -290,7 +356,9 @@ export function RequestEventsDetailsCard({
         row.sourceRaw,
         row.authIndex,
         row.failed ? 'failed' : 'success',
-        ...(hasLatencyData ? [row.latencyMs ?? ''] : []),
+        ...(hasLatencyData
+          ? [row.latencyMs ?? '', row.tps !== null ? row.tps.toFixed(2) : '']
+          : []),
         row.inputTokens,
         row.outputTokens,
         row.reasoningTokens,
@@ -320,6 +388,7 @@ export function RequestEventsDetailsCard({
       auth_index: row.authIndex,
       failed: row.failed,
       ...(hasLatencyData && row.latencyMs !== null ? { latency_ms: row.latencyMs } : {}),
+      ...(hasLatencyData && row.tps !== null ? { tps: row.tps } : {}),
       tokens: {
         input_tokens: row.inputTokens,
         output_tokens: row.outputTokens,
@@ -409,6 +478,26 @@ export function RequestEventsDetailsCard({
             fullWidth={false}
           />
         </div>
+        {onRefresh && (
+          <div className={styles.requestEventsFilterItem}>
+            <span className={styles.requestEventsFilterLabelRow}>
+              <span className={styles.requestEventsFilterLabel}>{t('monitor.auto_refresh')}</span>
+              {autoRefreshCountdown !== null && (
+                <span className={styles.requestEventsCountdown}>
+                  {t('monitor.auto_refresh_countdown', { count: autoRefreshCountdown })}
+                </span>
+              )}
+            </span>
+            <Select
+              value={autoRefreshValue}
+              options={autoRefreshOptions}
+              onChange={(value) => setAutoRefreshValue(value as AutoRefreshValue)}
+              className={styles.requestEventsSelect}
+              ariaLabel={t('monitor.auto_refresh')}
+              fullWidth={false}
+            />
+          </div>
+        )}
       </div>
 
       {loading && rows.length === 0 ? (
@@ -427,7 +516,6 @@ export function RequestEventsDetailsCard({
         <>
           <div className={styles.requestEventsMeta}>
             <span>{t('usage_stats.request_events_count', { count: filteredRows.length })}</span>
-            {hasLatencyData && <span className={styles.requestEventsLimitHint}>{latencyHint}</span>}
             {filteredRows.length > MAX_RENDERED_EVENTS && (
               <span className={styles.requestEventsLimitHint}>
                 {t('usage_stats.request_events_limit_hint', {
@@ -436,6 +524,7 @@ export function RequestEventsDetailsCard({
                 })}
               </span>
             )}
+            {hasLatencyData && <span className={styles.requestEventsLimitHint}>{latencyHint}</span>}
           </div>
 
           <div className={styles.requestEventsTableWrapper}>
@@ -447,7 +536,8 @@ export function RequestEventsDetailsCard({
                   <th>{t('usage_stats.request_events_source')}</th>
                   <th>{t('usage_stats.request_events_auth_index')}</th>
                   <th>{t('usage_stats.request_events_result')}</th>
-                  {hasLatencyData && <th title={latencyHint}>{t('usage_stats.time')}</th>}
+                  {hasLatencyData && <th>{t('usage_stats.time')}</th>}
+                  {hasLatencyData && <th>{t('usage_stats.request_events_tps')}</th>}
                   <th>{t('usage_stats.input_tokens')}</th>
                   <th>{t('usage_stats.output_tokens')}</th>
                   <th>{t('usage_stats.reasoning_tokens')}</th>
@@ -485,6 +575,7 @@ export function RequestEventsDetailsCard({
                     {hasLatencyData && (
                       <td className={styles.durationCell}>{formatDurationMs(row.latencyMs)}</td>
                     )}
+                    {hasLatencyData && <td>{row.tps !== null ? row.tps.toFixed(2) : '--'}</td>}
                     <td>{row.inputTokens.toLocaleString()}</td>
                     <td>{row.outputTokens.toLocaleString()}</td>
                     <td>{row.reasoningTokens.toLocaleString()}</td>

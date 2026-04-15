@@ -941,6 +941,12 @@
     "iflow_cookie_result_type": "Тип",
     "remote_access_disabled": "Этот способ входа недоступен при удалённом доступе. Подключитесь с localhost."
   },
+  "monitor": {
+    "title": "Центр мониторинга",
+    "auto_refresh": "Автообновление",
+    "auto_refresh_off": "Выкл",
+    "auto_refresh_countdown": "Следующее обновление через {{count}} с"
+  },
   "usage_stats": {
     "title": "Статистика использования",
     "total_requests": "Всего запросов",
@@ -1051,6 +1057,7 @@
     "request_events_no_result_desc": "Попробуйте другие фильтры или очистите текущие.",
     "request_events_count": "{{count}} событий",
     "request_events_limit_hint": "Показано {{shown}} из {{total}} событий для стабильной производительности.",
+    "request_events_tps": "TPS",
     "input_tokens": "Входные токены",
     "output_tokens": "Выходные токены",
     "last_updated": "Обновлено"

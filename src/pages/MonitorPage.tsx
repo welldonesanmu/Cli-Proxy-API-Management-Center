@@ -23,7 +23,7 @@ import { usageApi, providersApi, authFilesApi } from '@/services/api';
 import { filterDataByApiFilter, filterDataByTimeRange } from '@/utils/monitor';
 import { buildSourceInfoMap } from '@/utils/sourceResolver';
 import { normalizeAuthIndex } from '@/utils/usage';
-import type { AuthFileItem } from '@/types';
+import type { AuthFileItem, GeminiKeyConfig, ProviderKeyConfig, OpenAIProviderConfig } from '@/types';
 import type { CredentialInfo } from '@/types/sourceInfo';
 import { KpiCards } from '@/components/monitor/KpiCards';
 import { ModelDistributionChart } from '@/components/monitor/ModelDistributionChart';
@@ -33,7 +33,7 @@ import { HourlyTokenChart } from '@/components/monitor/HourlyTokenChart';
 import { ChannelStats } from '@/components/monitor/ChannelStats';
 import { FailureAnalysis } from '@/components/monitor/FailureAnalysis';
 import { MonitorCredentialStatsCard } from '@/components/monitor/MonitorCredentialStatsCard';
-import { RequestLogs } from '@/components/monitor/RequestLogs';
+import { RequestEventsDetailsCard } from '@/components/usage';
 import styles from './MonitorPage.module.scss';
 
 // 注册 Chart.js 组件
@@ -91,17 +91,21 @@ export function MonitorPage() {
   const [apiFilter, setApiFilter] = useState('');
   const [providerMap, setProviderMap] = useState<Record<string, string>>({});
   const [providerModels, setProviderModels] = useState<Record<string, Set<string>>>({});
-  const [providerTypeMap, setProviderTypeMap] = useState<Record<string, string>>({});
   const [sourceInfoMap, setSourceInfoMap] = useState<Map<string, import('@/types/sourceInfo').SourceInfo>>(new Map());
   const [authFileMap, setAuthFileMap] = useState<Map<string, CredentialInfo>>(new Map());
   const [authFiles, setAuthFiles] = useState<AuthFileItem[]>([]);
+  const [geminiKeys, setGeminiKeys] = useState<GeminiKeyConfig[]>([]);
+  const [claudeConfigs, setClaudeConfigs] = useState<ProviderKeyConfig[]>([]);
+  const [codexConfigs, setCodexConfigs] = useState<ProviderKeyConfig[]>([]);
+  const [vertexConfigs, setVertexConfigs] = useState<ProviderKeyConfig[]>([]);
+  const [openaiProviders, setOpenaiProviders] = useState<OpenAIProviderConfig[]>([]);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
 
   // 加载渠道名称映射（支持所有提供商类型）
   const loadProviderMap = useCallback(async () => {
     try {
       const map: Record<string, string> = {};
       const modelsMap: Record<string, Set<string>> = {};
-      const typeMap: Record<string, string> = {};
 
       // 并行加载所有提供商配置和认证文件
       const [openaiProviders, geminiKeys, claudeConfigs, codexConfigs, vertexConfigs, authFilesResponse] = await Promise.all([
@@ -112,6 +116,12 @@ export function MonitorPage() {
         providersApi.getVertexConfigs().catch(() => []),
         authFilesApi.list().catch(() => ({ files: [] })),
       ]);
+
+      setOpenaiProviders(openaiProviders as OpenAIProviderConfig[]);
+      setGeminiKeys(geminiKeys as GeminiKeyConfig[]);
+      setClaudeConfigs(claudeConfigs as ProviderKeyConfig[]);
+      setCodexConfigs(codexConfigs as ProviderKeyConfig[]);
+      setVertexConfigs(vertexConfigs as ProviderKeyConfig[]);
 
       // 处理 OpenAI 兼容提供商
       openaiProviders.forEach((provider) => {
@@ -127,13 +137,11 @@ export function MonitorPage() {
           if (apiKey) {
             map[apiKey] = providerName;
             modelsMap[apiKey] = modelSet;
-            typeMap[apiKey] = 'OpenAI';
           }
         });
         if (provider.name) {
           map[provider.name] = providerName;
           modelsMap[provider.name] = modelSet;
-          typeMap[provider.name] = 'OpenAI';
         }
       });
 
@@ -143,7 +151,6 @@ export function MonitorPage() {
         if (apiKey) {
           const providerName = config.prefix?.trim() || 'Gemini';
           map[apiKey] = providerName;
-          typeMap[apiKey] = 'Gemini';
         }
       });
 
@@ -153,7 +160,6 @@ export function MonitorPage() {
         if (apiKey) {
           const providerName = config.prefix?.trim() || 'Claude';
           map[apiKey] = providerName;
-          typeMap[apiKey] = 'Claude';
           // 存储模型集合
           if (config.models && config.models.length > 0) {
             const modelSet = new Set<string>();
@@ -172,7 +178,6 @@ export function MonitorPage() {
         if (apiKey) {
           const providerName = config.prefix?.trim() || 'Codex';
           map[apiKey] = providerName;
-          typeMap[apiKey] = 'Codex';
           if (config.models && config.models.length > 0) {
             const modelSet = new Set<string>();
             config.models.forEach((m) => {
@@ -190,7 +195,6 @@ export function MonitorPage() {
         if (apiKey) {
           const providerName = config.prefix?.trim() || 'Vertex';
           map[apiKey] = providerName;
-          typeMap[apiKey] = 'Vertex';
           if (config.models && config.models.length > 0) {
             const modelSet = new Set<string>();
             config.models.forEach((m) => {
@@ -204,7 +208,6 @@ export function MonitorPage() {
 
       setProviderMap(map);
       setProviderModels(modelsMap);
-      setProviderTypeMap(typeMap);
 
       // 构建 sourceInfoMap（与请求事件明细相同的解析逻辑）
       setSourceInfoMap(buildSourceInfoMap({
@@ -247,6 +250,7 @@ export function MonitorPage() {
       // API 返回的数据可能在 response.usage 或直接在 response 中
       const data = response?.usage ?? response;
       setUsageData(data as UsageData);
+      setLastRefreshedAt(new Date());
     } catch (err) {
       const message = err instanceof Error ? err.message : t('common.unknown_error');
       console.error('Monitor: Error loading data:', err);
@@ -370,15 +374,16 @@ export function MonitorPage() {
         <FailureAnalysis data={filteredData} loading={loading} providerMap={providerMap} providerModels={providerModels} sourceInfoMap={sourceInfoMap} authFileMap={authFileMap} />
       </div>
 
-      {/* 请求日志 */}
-      <RequestLogs
-        data={filteredData}
+      <RequestEventsDetailsCard
+        usage={filteredData}
         loading={loading}
-        providerMap={providerMap}
-        providerTypeMap={providerTypeMap}
-        sourceInfoMap={sourceInfoMap}
-        authFileMap={authFileMap}
-        apiFilter={apiFilter}
+        geminiKeys={geminiKeys}
+        claudeConfigs={claudeConfigs}
+        codexConfigs={codexConfigs}
+        vertexConfigs={vertexConfigs}
+        openaiProviders={openaiProviders}
+        onRefresh={loadData}
+        lastRefreshedAt={lastRefreshedAt}
       />
     </div>
   );
