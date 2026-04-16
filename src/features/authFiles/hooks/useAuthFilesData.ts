@@ -9,7 +9,8 @@ import { MAX_AUTH_FILE_SIZE } from '@/utils/constants';
 import { downloadBlob } from '@/utils/download';
 import {
   getTypeLabel,
-  hasAuthFileStatusMessage,
+  isDisableableProblemAuthFile,
+  isProblemAuthFile,
   isRuntimeOnlyAuthFile,
 } from '@/features/authFiles/constants';
 
@@ -70,7 +71,10 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const filesRef = useRef<AuthFileItem[]>([]);
+  const statusUpdatingRef = useRef<Record<string, boolean>>({});
   const batchStatusPendingRef = useRef(false);
+  const autoDisablePendingNamesRef = useRef<Set<string>>(new Set());
   const selectionCount = selectedFiles.size;
   const toggleSelect = useCallback((name: string) => {
     setSelectedFiles((prev) => {
@@ -146,6 +150,123 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
     });
   }, []);
 
+  const batchUpdateStatus = useCallback(
+    async (
+      names: string[],
+      enabled: boolean,
+      options?: {
+        skipDeselectAll?: boolean;
+        suppressNotifications?: boolean;
+        sourceFiles?: AuthFileItem[];
+      }
+    ) => {
+      if (batchStatusPendingRef.current) return { successCount: 0, failCount: 0 };
+
+      const uniqueNames = Array.from(new Set(names));
+      if (uniqueNames.length === 0) return { successCount: 0, failCount: 0 };
+      if (uniqueNames.some((name) => statusUpdatingRef.current[name] === true)) {
+        return { successCount: 0, failCount: uniqueNames.length };
+      }
+
+      const sourceFiles = options?.sourceFiles ?? filesRef.current;
+      const originalDisabled = new Map(
+        sourceFiles
+          .filter((file) => uniqueNames.includes(file.name))
+          .map((file) => [file.name, file.disabled === true])
+      );
+      const targetNames = new Set(originalDisabled.keys());
+      const targetNameList = Array.from(targetNames);
+      if (targetNameList.length === 0) return { successCount: 0, failCount: 0 };
+
+      const nextDisabled = !enabled;
+
+      batchStatusPendingRef.current = true;
+      setBatchStatusUpdating(true);
+      setStatusUpdating((prev) => {
+        const next = { ...prev };
+        targetNameList.forEach((name) => {
+          next[name] = true;
+        });
+        return next;
+      });
+      setFiles((prev) =>
+        prev.map((file) =>
+          targetNames.has(file.name) ? { ...file, disabled: nextDisabled } : file
+        )
+      );
+
+      try {
+        const results = await Promise.allSettled(
+          targetNameList.map((name) => authFilesApi.setStatus(name, nextDisabled))
+        );
+
+        let successCount = 0;
+        let failCount = 0;
+        const failedNames = new Set<string>();
+        const confirmedDisabled = new Map<string, boolean>();
+
+        results.forEach((result, index) => {
+          const name = targetNameList[index];
+          if (result.status === 'fulfilled') {
+            successCount++;
+            confirmedDisabled.set(name, result.value.disabled);
+          } else {
+            failCount++;
+            failedNames.add(name);
+          }
+        });
+
+        setFiles((prev) =>
+          prev.map((file) => {
+            if (failedNames.has(file.name)) {
+              return { ...file, disabled: originalDisabled.get(file.name) === true };
+            }
+            if (confirmedDisabled.has(file.name)) {
+              return { ...file, disabled: confirmedDisabled.get(file.name) };
+            }
+            return file;
+          })
+        );
+
+        if (!options?.suppressNotifications) {
+          if (failCount === 0 && successCount > 0) {
+            showNotification(t('auth_files.batch_status_success', { count: successCount }), 'success');
+          } else if (failCount > 0) {
+            showNotification(
+              t('auth_files.batch_status_partial', { success: successCount, failed: failCount }),
+              'warning'
+            );
+          }
+        }
+
+        if (!options?.skipDeselectAll) {
+          deselectAll();
+        }
+
+        return { successCount, failCount };
+      } finally {
+        batchStatusPendingRef.current = false;
+        setBatchStatusUpdating(false);
+        setStatusUpdating((prev) => {
+          const next = { ...prev };
+          targetNameList.forEach((name) => {
+            delete next[name];
+          });
+          return next;
+        });
+      }
+    },
+    [deselectAll, showNotification, t]
+  );
+
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
+
+  useEffect(() => {
+    statusUpdatingRef.current = statusUpdating;
+  }, [statusUpdating]);
+
   useEffect(() => {
     if (selectedFiles.size === 0) return;
     const existingNames = new Set(files.map((file) => file.name));
@@ -168,14 +289,54 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
     setError('');
     try {
       const data = await authFilesApi.list();
-      setFiles(data?.files || []);
+      const nextFiles = data?.files || [];
+      setFiles(nextFiles);
+
+      const autoDisableCandidates = nextFiles.filter(
+        (file) =>
+          isDisableableProblemAuthFile(file) &&
+          statusUpdatingRef.current[file.name] !== true &&
+          !autoDisablePendingNamesRef.current.has(file.name)
+      );
+
+      if (autoDisableCandidates.length > 0 && !batchStatusPendingRef.current) {
+        const candidateNames = autoDisableCandidates.map((file) => file.name);
+        candidateNames.forEach((name) => autoDisablePendingNamesRef.current.add(name));
+
+        try {
+          const { successCount, failCount } = await batchUpdateStatus(candidateNames, false, {
+            skipDeselectAll: true,
+            suppressNotifications: true,
+            sourceFiles: nextFiles,
+          });
+
+          if (successCount > 0 && failCount === 0) {
+            showNotification(
+              t('auth_files.batch_auto_disable_problem_success', {
+                count: successCount,
+              }),
+              'warning'
+            );
+          } else if (successCount > 0 || failCount > 0) {
+            showNotification(
+              t('auth_files.batch_auto_disable_problem_partial', {
+                success: successCount,
+                failed: failCount,
+              }),
+              'warning'
+            );
+          }
+        } finally {
+          candidateNames.forEach((name) => autoDisablePendingNamesRef.current.delete(name));
+        }
+      }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : t('notification.refresh_failed');
       setError(errorMessage);
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [batchUpdateStatus, showNotification, t]);
 
   const handleUploadClick = useCallback(() => {
     fileInputRef.current?.click();
@@ -322,7 +483,7 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
               const filesToDelete = files.filter((file) => {
                 if (isRuntimeOnlyAuthFile(file)) return false;
                 if (isFiltered && file.type !== filter) return false;
-                if (isProblemOnly && !hasAuthFileStatusMessage(file)) return false;
+                if (isProblemOnly && !isProblemAuthFile(file)) return false;
                 if (isDisabledOnly && file.disabled !== true) return false;
                 return true;
               });
@@ -503,94 +664,9 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
 
   const batchSetStatus = useCallback(
     async (names: string[], enabled: boolean) => {
-      if (batchStatusPendingRef.current) return;
-
-      const uniqueNames = Array.from(new Set(names));
-      if (uniqueNames.length === 0) return;
-      if (uniqueNames.some((name) => statusUpdating[name] === true)) return;
-
-      const originalDisabled = new Map(
-        files
-          .filter((file) => uniqueNames.includes(file.name))
-          .map((file) => [file.name, file.disabled === true])
-      );
-      const targetNames = new Set(originalDisabled.keys());
-      const targetNameList = Array.from(targetNames);
-      if (targetNameList.length === 0) return;
-
-      const nextDisabled = !enabled;
-
-      batchStatusPendingRef.current = true;
-      setBatchStatusUpdating(true);
-      setStatusUpdating((prev) => {
-        const next = { ...prev };
-        targetNameList.forEach((name) => {
-          next[name] = true;
-        });
-        return next;
-      });
-      setFiles((prev) =>
-        prev.map((file) =>
-          targetNames.has(file.name) ? { ...file, disabled: nextDisabled } : file
-        )
-      );
-
-      try {
-        const results = await Promise.allSettled(
-          targetNameList.map((name) => authFilesApi.setStatus(name, nextDisabled))
-        );
-
-        let successCount = 0;
-        let failCount = 0;
-        const failedNames = new Set<string>();
-        const confirmedDisabled = new Map<string, boolean>();
-
-        results.forEach((result, index) => {
-          const name = targetNameList[index];
-          if (result.status === 'fulfilled') {
-            successCount++;
-            confirmedDisabled.set(name, result.value.disabled);
-          } else {
-            failCount++;
-            failedNames.add(name);
-          }
-        });
-
-        setFiles((prev) =>
-          prev.map((file) => {
-            if (failedNames.has(file.name)) {
-              return { ...file, disabled: originalDisabled.get(file.name) === true };
-            }
-            if (confirmedDisabled.has(file.name)) {
-              return { ...file, disabled: confirmedDisabled.get(file.name) };
-            }
-            return file;
-          })
-        );
-
-        if (failCount === 0) {
-          showNotification(t('auth_files.batch_status_success', { count: successCount }), 'success');
-        } else {
-          showNotification(
-            t('auth_files.batch_status_partial', { success: successCount, failed: failCount }),
-            'warning'
-          );
-        }
-
-        deselectAll();
-      } finally {
-        batchStatusPendingRef.current = false;
-        setBatchStatusUpdating(false);
-        setStatusUpdating((prev) => {
-          const next = { ...prev };
-          targetNameList.forEach((name) => {
-            delete next[name];
-          });
-          return next;
-        });
-      }
+      await batchUpdateStatus(names, enabled);
     },
-    [deselectAll, files, showNotification, statusUpdating, t]
+    [batchUpdateStatus]
   );
 
   const batchDownload = useCallback(

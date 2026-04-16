@@ -588,6 +588,8 @@
     "status_disabled_success": "\"{{name}}\" disabled",
     "batch_status_success": "{{count}} files updated successfully",
     "batch_status_partial": "{{success}} updated, {{failed}} failed",
+    "batch_auto_disable_problem_success": "Automatically disabled {{count}} problematic credentials",
+    "batch_auto_disable_problem_partial": "Auto-disable result: {{success}} succeeded, {{failed}} failed",
     "batch_delete_title": "Delete Selected Files",
     "batch_delete_confirm": "Are you sure you want to delete {{count}} files?",
     "batch_selected": "{{count}} selected",

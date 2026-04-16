@@ -232,10 +232,46 @@
 }
 
 .filterControlsPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   padding: 14px;
   border-radius: 10px;
   border: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
   background: color-mix(in srgb, var(--bg-secondary) 50%, transparent);
+}
+
+.filterControlsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: $spacing-sm;
+  min-height: 32px;
+
+  @include mobile {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+.filterControlsHeaderActions {
+  display: flex;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  max-width: 100%;
+
+  :global(.btn) {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  @include mobile {
+    width: 100%;
+
+    :global(.btn) {
+      width: 100%;
+    }
+  }
 }
 
 .filterControls {
@@ -288,8 +324,8 @@
 }
 
 .filterToggleGroup {
-  display: grid;
-  grid-template-columns: 1fr;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   min-height: 40px;
 }
@@ -297,24 +333,16 @@
 .filterToggleCard {
   display: flex;
   align-items: center;
+  flex: 1 1 180px;
   min-height: 40px;
-  padding: 0 2px;
+  min-width: 0;
+  padding: 0 10px;
   border-radius: 8px;
   border: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
   background: color-mix(in srgb, var(--bg-secondary) 50%, transparent);
-}
-
-.problemActionsRow {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 12px;
 
   @include mobile {
-    justify-content: stretch;
-
-    :global(.btn) {
-      width: 100%;
-    }
+    flex-basis: 100%;
   }
 }
 
@@ -328,10 +356,10 @@
 .filterToggleLabel {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
   color: var(--text-primary);
   font-size: 13px;
   font-weight: 600;
-  white-space: nowrap;
 }
 
 .pageSizeSelect {

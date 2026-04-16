@@ -32,7 +32,8 @@ import {
   getAuthFileIcon,
   getTypeColor,
   getTypeLabel,
-  hasAuthFileStatusMessage,
+  isDisableableProblemAuthFile,
+  isProblemAuthFile,
   isRuntimeOnlyAuthFile,
   normalizeProviderKey,
   parsePriorityValue,
@@ -324,9 +325,8 @@ export function AuthFilesPage() {
       if (!isAuthFilesSortMode(value) || value === sortMode) return;
       setSortMode(value);
       setPage(1);
-      void loadFiles().catch(() => {});
     },
-    [loadFiles, sortMode]
+    [sortMode]
   );
 
   const handleHeaderRefresh = useCallback(async () => {
@@ -363,7 +363,7 @@ export function AuthFilesPage() {
   const filesMatchingStatusFilters = useMemo(
     () =>
       files.filter((file) => {
-        if (problemOnly && !hasAuthFileStatusMessage(file)) return false;
+        if (problemOnly && !isProblemAuthFile(file)) return false;
         if (disabledOnly && file.disabled !== true) return false;
         return true;
       }),
@@ -453,8 +453,7 @@ export function AuthFilesPage() {
     batchStatusUpdating ||
     selectedHasStatusUpdating;
   const problemEnabledFilteredItems = useMemo(
-    () =>
-      sorted.filter((file) => hasAuthFileStatusMessage(file) && !isRuntimeOnlyAuthFile(file) && !file.disabled),
+    () => sorted.filter((file) => isDisableableProblemAuthFile(file)),
     [sorted]
   );
   const problemEnabledFilteredNames = useMemo(
@@ -735,6 +734,22 @@ export function AuthFilesPage() {
 
           <div className={styles.filterContent}>
             <div className={styles.filterControlsPanel}>
+              {problemOnly && (
+                <div className={styles.filterControlsHeader}>
+                  <div className={styles.filterControlsHeaderActions}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => void batchSetStatus(problemEnabledFilteredNames, false)}
+                      disabled={disableProblemFilteredButtonDisabled}
+                    >
+                      {t('auth_files.batch_disable_problem_filtered', {
+                        count: problemEnabledFilteredNames.length,
+                      })}
+                    </Button>
+                  </div>
+                </div>
+              )}
               <div className={styles.filterControls}>
                 <div className={styles.filterItem}>
                   <label>{t('auth_files.search_label')}</label>
@@ -824,20 +839,6 @@ export function AuthFilesPage() {
                   </div>
                 </div>
               </div>
-              {problemOnly && (
-                <div className={styles.problemActionsRow}>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => void batchSetStatus(problemEnabledFilteredNames, false)}
-                    disabled={disableProblemFilteredButtonDisabled}
-                  >
-                    {t('auth_files.batch_disable_problem_filtered', {
-                      count: problemEnabledFilteredNames.length,
-                    })}
-                  </Button>
-                </div>
-              )}
             </div>
 
             {loading ? (
