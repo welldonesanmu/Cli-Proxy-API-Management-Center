@@ -304,6 +304,20 @@
   background: color-mix(in srgb, var(--bg-secondary) 50%, transparent);
 }
 
+.problemActionsRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+
+  @include mobile {
+    justify-content: stretch;
+
+    :global(.btn) {
+      width: 100%;
+    }
+  }
+}
+
 .filterToggle {
   display: flex;
   align-items: center;
