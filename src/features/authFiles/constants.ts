@@ -140,8 +140,41 @@ export const resolveQuotaErrorMessage = (
 
 export const normalizeProviderKey = (value: string) => value.trim().toLowerCase();
 
+const getRawAuthFileStatusMessage = (file: AuthFileItem): unknown =>
+  file['status_message'] ?? file.statusMessage;
+
+const parseJsonLikeValue = (value: unknown): unknown => {
+  if (typeof value !== 'string') return value;
+
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return trimmed;
+    }
+  }
+
+  return trimmed;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const hasUsageLimitReachedType = (value: unknown): boolean => {
+  const parsed = parseJsonLikeValue(value);
+  if (!isRecord(parsed)) return false;
+
+  const errorPayload = isRecord(parsed.error) ? parsed.error : parsed;
+  return errorPayload.type === 'usage_limit_reached';
+};
+
 export const getAuthFileStatusMessage = (file: AuthFileItem): string => {
-  const raw = file['status_message'] ?? file.statusMessage;
+  const raw = getRawAuthFileStatusMessage(file);
   if (typeof raw === 'string') return raw.trim();
   if (raw == null) return '';
   return String(raw).trim();
@@ -154,6 +187,12 @@ export const isProblemAuthFile = (file: AuthFileItem): boolean => hasAuthFileSta
 
 export const isDisableableProblemAuthFile = (file: AuthFileItem): boolean =>
   isProblemAuthFile(file) && !isRuntimeOnlyAuthFile(file) && file.disabled !== true;
+
+export const isUsageLimitReachedAuthFile = (file: AuthFileItem): boolean =>
+  hasUsageLimitReachedType(getRawAuthFileStatusMessage(file)) || hasUsageLimitReachedType(file.status);
+
+export const isAutoDisableableAuthFile = (file: AuthFileItem): boolean =>
+  isUsageLimitReachedAuthFile(file) && !isRuntimeOnlyAuthFile(file) && file.disabled !== true;
 
 export const getTypeLabel = (t: TFunction, type: string): string => {
   const key = `auth_files.filter_${type}`;

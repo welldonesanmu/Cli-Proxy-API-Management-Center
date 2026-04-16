@@ -9,7 +9,7 @@ import { MAX_AUTH_FILE_SIZE } from '@/utils/constants';
 import { downloadBlob } from '@/utils/download';
 import {
   getTypeLabel,
-  isDisableableProblemAuthFile,
+  isAutoDisableableAuthFile,
   isProblemAuthFile,
   isRuntimeOnlyAuthFile,
 } from '@/features/authFiles/constants';
@@ -294,7 +294,7 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
 
       const autoDisableCandidates = nextFiles.filter(
         (file) =>
-          isDisableableProblemAuthFile(file) &&
+          isAutoDisableableAuthFile(file) &&
           statusUpdatingRef.current[file.name] !== true &&
           !autoDisablePendingNamesRef.current.has(file.name)
       );
