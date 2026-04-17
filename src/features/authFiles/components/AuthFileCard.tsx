@@ -13,7 +13,7 @@ import {
 import { ProviderStatusBar } from '@/components/providers/ProviderStatusBar';
 import type { AuthFileItem } from '@/types';
 import { resolveAuthProvider } from '@/utils/quota';
-import { calculateStatusBarData, normalizeAuthIndex, type KeyStats } from '@/utils/usage';
+import { calculateStatusBarData, type KeyStats } from '@/utils/usage';
 import { formatFileSize } from '@/utils/format';
 import {
   QUOTA_PROVIDER_TYPES,
@@ -28,7 +28,10 @@ import {
   type QuotaProviderType,
   type ResolvedTheme,
 } from '@/features/authFiles/constants';
-import type { AuthFileStatusBarData } from '@/features/authFiles/hooks/useAuthFilesStatusBarCache';
+import {
+  getAuthFileStatusBarCacheKey,
+  type AuthFileStatusBarData,
+} from '@/features/authFiles/hooks/useAuthFilesStatusBarCache';
 import { AuthFileQuotaSection } from '@/features/authFiles/components/AuthFileQuotaSection';
 import styles from '@/pages/AuthFilesPage.module.scss';
 
@@ -106,10 +109,8 @@ export function AuthFileCard(props: AuthFileCardProps) {
               ? styles.kimiCard
               : '';
 
-  const rawAuthIndex = file['auth_index'] ?? file.authIndex;
-  const authIndexKey = normalizeAuthIndex(rawAuthIndex);
   const statusData =
-    (authIndexKey && statusBarCache.get(authIndexKey)) || calculateStatusBarData([]);
+    statusBarCache.get(getAuthFileStatusBarCacheKey(file)) || calculateStatusBarData([]);
   const rawStatusMessage = getAuthFileStatusMessage(file);
   const hasStatusWarning =
     Boolean(rawStatusMessage) && !HEALTHY_STATUS_MESSAGES.has(rawStatusMessage.toLowerCase());

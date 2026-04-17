@@ -37,6 +37,7 @@ import {
   getModelNamesFromUsage,
   getApiStats,
   getModelStats,
+  computeKeyStats,
   filterUsageByTimeRange,
   type UsageTimeRange
 } from '@/utils/usage';
@@ -59,6 +60,7 @@ const TIME_RANGE_STORAGE_KEY = 'cli-proxy-usage-time-range-v1';
 const DEFAULT_CHART_LINES = ['all'];
 const DEFAULT_TIME_RANGE: UsageTimeRange = '24h';
 const MAX_CHART_LINES = 9;
+const EMPTY_KEY_STATS = { bySource: {}, byAuthIndex: {}, byAccountIdentity: {} };
 const TIME_RANGE_OPTIONS: ReadonlyArray<{ value: UsageTimeRange; labelKey: string }> = [
   { value: 'all', labelKey: 'usage_stats.range_all' },
   { value: '7h', labelKey: 'usage_stats.range_7h' },
@@ -125,6 +127,7 @@ export function UsagePage() {
   // Data hook
   const {
     usage,
+    keyStats,
     loading,
     error,
     lastRefreshedAt,
@@ -160,6 +163,10 @@ export function UsagePage() {
   );
   const hourWindowHours =
     timeRange === 'all' ? undefined : HOUR_WINDOW_BY_TIME_RANGE[timeRange];
+  const credentialKeyStats = useMemo(
+    () => (timeRange === 'all' ? keyStats : filteredUsage ? computeKeyStats(filteredUsage) : EMPTY_KEY_STATS),
+    [timeRange, keyStats, filteredUsage]
+  );
 
   const handleChartLinesChange = useCallback((lines: string[]) => {
     setChartLines(normalizeChartLines(lines));
@@ -378,6 +385,7 @@ export function UsagePage() {
       {/* Credential Stats */}
       <CredentialStatsCard
         usage={filteredUsage}
+        keyStats={credentialKeyStats}
         loading={loading}
         geminiKeys={config?.geminiApiKeys || []}
         claudeConfigs={config?.claudeApiKeys || []}

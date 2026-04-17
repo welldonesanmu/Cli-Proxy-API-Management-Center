@@ -31,6 +31,7 @@ export interface KeyStatBucket {
 export interface KeyStats {
   bySource: Record<string, KeyStatBucket>;
   byAuthIndex: Record<string, KeyStatBucket>;
+  byAccountIdentity?: Record<string, KeyStatBucket>;
 }
 
 export interface TokenBreakdown {
@@ -56,6 +57,7 @@ export interface UsageDetail {
   timestamp: string;
   source: string;
   auth_index: number;
+  account_identity?: string;
   latency_ms?: number;
   tokens: {
     input_tokens: number;
@@ -115,6 +117,110 @@ const USAGE_TIME_RANGE_MS: Record<Exclude<UsageTimeRange, 'all'>, number> = {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const readStringRecordField = (record: Record<string, unknown>, keys: readonly string[]): string => {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed) return trimmed;
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return String(value);
+    }
+  }
+  return '';
+};
+
+const readStatCount = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, value);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, parsed);
+    }
+  }
+  return null;
+};
+
+const readKeyStatBucket = (value: unknown): KeyStatBucket | null => {
+  if (!isRecord(value)) return null;
+  const success = readStatCount(value.success ?? value.successCount ?? value.success_count);
+  const failure = readStatCount(value.failure ?? value.failureCount ?? value.failure_count);
+  if (success === null && failure === null) return null;
+  return {
+    success: success ?? 0,
+    failure: failure ?? 0,
+  };
+};
+
+const mergeKeyStatBucketMaps = (
+  target: Record<string, KeyStatBucket>,
+  source: Record<string, KeyStatBucket>
+): Record<string, KeyStatBucket> => {
+  const merged = { ...target };
+  Object.entries(source).forEach(([key, bucket]) => {
+    if (!key) return;
+    const existing = merged[key] ?? { success: 0, failure: 0 };
+    merged[key] = {
+      success: existing.success + bucket.success,
+      failure: existing.failure + bucket.failure,
+    };
+  });
+  return merged;
+};
+
+const ACCOUNT_IDENTITY_FIELD_KEYS = [
+  'account_identity',
+  'accountIdentity',
+  'account_id',
+  'accountId',
+  'credential_account_id',
+  'credentialAccountId',
+] as const;
+
+const collectAccountIdentityStatsFromValue = (value: unknown): Record<string, KeyStatBucket> => {
+  const result: Record<string, KeyStatBucket> = {};
+
+  const addBucket = (identity: string, bucket: KeyStatBucket) => {
+    if (!identity) return;
+    result[identity] = result[identity]
+      ? {
+          success: result[identity].success + bucket.success,
+          failure: result[identity].failure + bucket.failure,
+        }
+      : bucket;
+  };
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => {
+      if (!isRecord(entry)) return;
+      const identity = readStringRecordField(entry, [...ACCOUNT_IDENTITY_FIELD_KEYS, 'id', 'key']);
+      const bucket = readKeyStatBucket(entry);
+      if (identity && bucket) {
+        addBucket(identity, bucket);
+      }
+    });
+    return result;
+  }
+
+  if (!isRecord(value)) return result;
+
+  Object.entries(value).forEach(([key, entry]) => {
+    if (!isRecord(entry)) return;
+    const identity = readStringRecordField(entry, ACCOUNT_IDENTITY_FIELD_KEYS as unknown as string[]) || key.trim();
+    const bucket = readKeyStatBucket(entry);
+    if (identity && bucket) {
+      addBucket(identity, bucket);
+    }
+  });
+
+  return result;
+};
 
 const getApisRecord = (usageData: unknown): Record<string, unknown> | null => {
   const usageRecord = isRecord(usageData) ? usageData : null;
@@ -214,8 +320,14 @@ export function filterUsageByTimeRange<T>(
         return;
       }
 
+      const {
+        account_stats: _ignoredAccountStats,
+        accountStats: _ignoredCamelAccountStats,
+        ...modelEntryWithoutAccountStats
+      } = modelEntry;
+
       filteredModels[modelName] = {
-        ...modelEntry,
+        ...modelEntryWithoutAccountStats,
         ...toUsageSummaryFields(modelSummary),
         details: filteredDetails,
       };
@@ -243,8 +355,14 @@ export function filterUsageByTimeRange<T>(
     totalSummary.totalTokens += apiSummary.totalTokens;
   });
 
+  const {
+    account_stats: _ignoredTopLevelAccountStats,
+    accountStats: _ignoredTopLevelCamelAccountStats,
+    ...usageRecordWithoutAccountStats
+  } = usageRecord;
+
   return {
-    ...usageRecord,
+    ...usageRecordWithoutAccountStats,
     ...toUsageSummaryFields(totalSummary),
     apis: filteredApis,
   } as T;
@@ -558,6 +676,14 @@ export function collectUsageDetails(usageData: unknown): UsageDetail[] {
           timestamp,
           source: normalizeSource(detailRaw.source),
           auth_index: detailRaw.auth_index as unknown as number,
+          account_identity: readStringRecordField(detailRaw, [
+            'account_identity',
+            'accountIdentity',
+            'account_id',
+            'accountId',
+            'credential_account_id',
+            'credentialAccountId',
+          ]) || undefined,
           latency_ms: latencyMs ?? undefined,
           tokens: tokensRaw as unknown as UsageDetail['tokens'],
           failed: detailRaw.failed === true,
@@ -631,6 +757,14 @@ export function collectUsageDetailsWithEndpoint(usageData: unknown): UsageDetail
           timestamp,
           source: normalizeSource(detailRaw.source),
           auth_index: detailRaw.auth_index as unknown as number,
+          account_identity: readStringRecordField(detailRaw, [
+            'account_identity',
+            'accountIdentity',
+            'account_id',
+            'accountId',
+            'credential_account_id',
+            'credentialAccountId',
+          ]) || undefined,
           latency_ms: latencyMs ?? undefined,
           tokens: tokensRaw as unknown as UsageDetail['tokens'],
           failed: detailRaw.failed === true,
@@ -1598,12 +1732,45 @@ export function computeKeyStats(
   masker: (val: string) => string = maskApiKey
 ): KeyStats {
   const apis = getApisRecord(usageData);
+  const usageRecord = isRecord(usageData) ? usageData : null;
+  const topLevelAccountIdentityStats = usageRecord
+    ? mergeKeyStatBucketMaps(
+        collectAccountIdentityStatsFromValue(usageRecord.account_stats),
+        collectAccountIdentityStatsFromValue(usageRecord.accountStats)
+      )
+    : {};
+
   if (!apis) {
-    return { bySource: {}, byAuthIndex: {} };
+    return {
+      bySource: {},
+      byAuthIndex: {},
+      byAccountIdentity: topLevelAccountIdentityStats,
+    };
   }
 
   const sourceStats: Record<string, KeyStatBucket> = {};
   const authIndexStats: Record<string, KeyStatBucket> = {};
+
+  let explicitAccountIdentityStats = topLevelAccountIdentityStats;
+  if (Object.keys(explicitAccountIdentityStats).length === 0) {
+    Object.values(apis).forEach((apiEntry) => {
+      if (!isRecord(apiEntry)) return;
+      const modelsRaw = apiEntry.models;
+      const models = isRecord(modelsRaw) ? modelsRaw : null;
+      if (!models) return;
+
+      Object.values(models).forEach((modelEntry) => {
+        if (!isRecord(modelEntry)) return;
+        explicitAccountIdentityStats = mergeKeyStatBucketMaps(
+          explicitAccountIdentityStats,
+          collectAccountIdentityStatsFromValue(modelEntry.account_stats ?? modelEntry.accountStats)
+        );
+      });
+    });
+  }
+
+  const useExplicitAccountIdentityStats = Object.keys(explicitAccountIdentityStats).length > 0;
+  const accountIdentityStats = useExplicitAccountIdentityStats ? { ...explicitAccountIdentityStats } : {};
 
   const ensureBucket = (bucket: Record<string, KeyStatBucket>, key: string) => {
     if (!bucket[key]) {
@@ -1626,6 +1793,9 @@ export function computeKeyStats(
         const detailRecord = isRecord(detail) ? detail : null;
         const source = normalizeUsageSourceId(detailRecord?.source, masker);
         const authIndexKey = normalizeAuthIndex(detailRecord?.auth_index);
+        const accountIdentity = detailRecord
+          ? readStringRecordField(detailRecord, ACCOUNT_IDENTITY_FIELD_KEYS)
+          : '';
         const isFailed = detailRecord?.failed === true;
 
         if (source) {
@@ -1645,6 +1815,15 @@ export function computeKeyStats(
             bucket.success += 1;
           }
         }
+
+        if (!useExplicitAccountIdentityStats && accountIdentity) {
+          const bucket = ensureBucket(accountIdentityStats, accountIdentity);
+          if (isFailed) {
+            bucket.failure += 1;
+          } else {
+            bucket.success += 1;
+          }
+        }
       });
     });
   });
@@ -1652,12 +1831,14 @@ export function computeKeyStats(
   return {
     bySource: sourceStats,
     byAuthIndex: authIndexStats,
+    byAccountIdentity: accountIdentityStats,
   };
 }
 
 export function computeKeyStatsFromDetails(usageDetails: UsageDetail[]): KeyStats {
   const bySource: Record<string, KeyStatBucket> = {};
   const byAuthIndex: Record<string, KeyStatBucket> = {};
+  const byAccountIdentity: Record<string, KeyStatBucket> = {};
 
   const ensureBucket = (bucket: Record<string, KeyStatBucket>, key: string) => {
     if (!bucket[key]) {
@@ -1669,6 +1850,7 @@ export function computeKeyStatsFromDetails(usageDetails: UsageDetail[]): KeyStat
   usageDetails.forEach((detail) => {
     const source = detail.source;
     const authIndexKey = normalizeAuthIndex(detail.auth_index);
+    const accountIdentity = typeof detail.account_identity === 'string' ? detail.account_identity.trim() : '';
     const isFailed = detail.failed === true;
 
     if (source) {
@@ -1688,9 +1870,18 @@ export function computeKeyStatsFromDetails(usageDetails: UsageDetail[]): KeyStat
         bucket.success += 1;
       }
     }
+
+    if (accountIdentity) {
+      const bucket = ensureBucket(byAccountIdentity, accountIdentity);
+      if (isFailed) {
+        bucket.failure += 1;
+      } else {
+        bucket.success += 1;
+      }
+    }
   });
 
-  return { bySource, byAuthIndex };
+  return { bySource, byAuthIndex, byAccountIdentity };
 }
 
 export type TokenCategory = 'input' | 'output' | 'cached' | 'reasoning';

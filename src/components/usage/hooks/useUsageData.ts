@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { USAGE_STATS_STALE_TIME_MS, useNotificationStore, useUsageStatsStore } from '@/stores';
 import { usageApi } from '@/services/api/usage';
 import { downloadBlob } from '@/utils/download';
-import { loadModelPrices, saveModelPrices, type ModelPrice } from '@/utils/usage';
+import { loadModelPrices, saveModelPrices, type KeyStats, type ModelPrice } from '@/utils/usage';
 
 export interface UsagePayload {
   total_requests?: number;
@@ -16,6 +16,7 @@ export interface UsagePayload {
 
 export interface UseUsageDataReturn {
   usage: UsagePayload | null;
+  keyStats: KeyStats;
   loading: boolean;
   error: string;
   lastRefreshedAt: Date | null;
@@ -34,6 +35,7 @@ export function useUsageData(): UseUsageDataReturn {
   const { t } = useTranslation();
   const { showNotification } = useNotificationStore();
   const usageSnapshot = useUsageStatsStore((state) => state.usage);
+  const keyStats = useUsageStatsStore((state) => state.keyStats);
   const loading = useUsageStatsStore((state) => state.loading);
   const storeError = useUsageStatsStore((state) => state.error);
   const lastRefreshedAtTs = useUsageStatsStore((state) => state.lastRefreshedAt);
@@ -140,6 +142,7 @@ export function useUsageData(): UseUsageDataReturn {
 
   return {
     usage,
+    keyStats,
     loading,
     error,
     lastRefreshedAt,

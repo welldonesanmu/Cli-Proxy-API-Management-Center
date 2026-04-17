@@ -10,10 +10,17 @@ import iconQwen from '@/assets/icons/qwen.svg';
 import iconVertex from '@/assets/icons/vertex.svg';
 import type { AuthFileItem } from '@/types';
 import {
+  isCodexFile,
+  isGeminiCliFile,
+  resolveCodexChatgptAccountId,
+  resolveGeminiCliProjectId,
+} from '@/utils/quota';
+import {
   normalizeAuthIndex,
   normalizeUsageSourceId,
   type KeyStatBucket,
   type KeyStats,
+  type UsageDetail,
 } from '@/utils/usage';
 
 export type ThemeColors = { bg: string; text: string; border?: string };
@@ -242,9 +249,135 @@ export function isRuntimeOnlyAuthFile(file: AuthFileItem): boolean {
   return false;
 }
 
+const parseStatCount = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, value);
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed)) return Math.max(0, parsed);
+  }
+  return null;
+};
+
+const readLifecycleStatsBucket = (file: AuthFileItem): KeyStatBucket | null => {
+  const lifecycleStats =
+    file.lifecycleStats ?? file['lifecycle_stats'] ?? file['lifecycleStats'] ?? null;
+  if (!lifecycleStats || typeof lifecycleStats !== 'object' || Array.isArray(lifecycleStats)) {
+    return null;
+  }
+
+  const record = lifecycleStats as Record<string, unknown>;
+  const success = parseStatCount(record.success ?? record.successCount ?? record.success_count);
+  const failure = parseStatCount(record.failure ?? record.failureCount ?? record.failure_count);
+  if (success === null && failure === null) return null;
+
+  return {
+    success: success ?? 0,
+    failure: failure ?? 0,
+  };
+};
+
+export const getAuthFileAccountIdentity = (file: AuthFileItem): string => {
+  const directCandidates = [
+    file.accountIdentity,
+    file['account_identity'],
+    file.accountId,
+    file['account_id'],
+    file.credentialAccountId,
+    file['credential_account_id'],
+  ];
+
+  for (const candidate of directCandidates) {
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      if (trimmed) return trimmed;
+    }
+    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+      return String(candidate);
+    }
+  }
+
+  if (isCodexFile(file)) {
+    const codexAccountId = resolveCodexChatgptAccountId(file);
+    if (codexAccountId) return `codex:${codexAccountId}`;
+  }
+
+  if (isGeminiCliFile(file)) {
+    const geminiProjectId = resolveGeminiCliProjectId(file);
+    if (geminiProjectId) return `gemini-cli:${geminiProjectId}`;
+  }
+
+  return '';
+};
+
+export const buildAuthFileUsageLookupKeys = (file: AuthFileItem): string[] => {
+  const keys: string[] = [];
+  const accountIdentity = getAuthFileAccountIdentity(file);
+  if (accountIdentity) {
+    keys.push(`account:${accountIdentity}`);
+  }
+
+  const rawAuthIndex = file['auth_index'] ?? file.authIndex;
+  const authIndexKey = normalizeAuthIndex(rawAuthIndex);
+  if (authIndexKey) {
+    keys.push(`auth:${authIndexKey}`);
+  }
+
+  const rawFileName = file?.name || '';
+  if (rawFileName) {
+    const fileNameId = normalizeUsageSourceId(rawFileName);
+    if (fileNameId) {
+      keys.push(`source:${fileNameId}`);
+    }
+
+    const nameWithoutExt = rawFileName.replace(/\.[^/.]+$/, '');
+    if (nameWithoutExt && nameWithoutExt !== rawFileName) {
+      const nameWithoutExtId = normalizeUsageSourceId(nameWithoutExt);
+      if (nameWithoutExtId) {
+        keys.push(`source:${nameWithoutExtId}`);
+      }
+    }
+  }
+
+  return Array.from(new Set(keys));
+};
+
+export const matchesAuthFileUsageDetail = (file: AuthFileItem, detail: UsageDetail): boolean => {
+  const lookupKeys = new Set(buildAuthFileUsageLookupKeys(file));
+  if (lookupKeys.size === 0) return false;
+
+  const detailAccountIdentity =
+    typeof detail.account_identity === 'string' ? detail.account_identity.trim() : '';
+  if (detailAccountIdentity && lookupKeys.has(`account:${detailAccountIdentity}`)) {
+    return true;
+  }
+
+  const detailAuthIndex = normalizeAuthIndex(detail.auth_index);
+  if (detailAuthIndex && lookupKeys.has(`auth:${detailAuthIndex}`)) {
+    return true;
+  }
+
+  if (detail.source && lookupKeys.has(`source:${detail.source}`)) {
+    return true;
+  }
+
+  return false;
+};
+
 export function resolveAuthFileStats(file: AuthFileItem, stats: KeyStats): KeyStatBucket {
   const defaultStats: KeyStatBucket = { success: 0, failure: 0 };
   const rawFileName = file?.name || '';
+
+  const lifecycleStats = readLifecycleStatsBucket(file);
+  if (lifecycleStats) {
+    return lifecycleStats;
+  }
+
+  const accountIdentity = getAuthFileAccountIdentity(file);
+  if (accountIdentity && stats.byAccountIdentity?.[accountIdentity]) {
+    return stats.byAccountIdentity[accountIdentity];
+  }
 
   // 兼容 auth_index 和 authIndex 两种字段名（API 返回的是 auth_index）
   const rawAuthIndex = file['auth_index'] ?? file.authIndex;

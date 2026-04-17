@@ -30,6 +30,17 @@ export interface AuthFileItem {
   statusMessage?: string;
   lastRefresh?: string | number;
   modified?: number;
+  accountIdentity?: string | null;
+  accountId?: string | number | null;
+  credentialAccountId?: string | null;
+  lifecycleStats?: {
+    success?: number | string;
+    failure?: number | string;
+    successCount?: number | string;
+    failureCount?: number | string;
+    success_count?: number | string;
+    failure_count?: number | string;
+  } | null;
   [key: string]: unknown;
 }
 
