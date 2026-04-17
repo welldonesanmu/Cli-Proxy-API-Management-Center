@@ -9,7 +9,6 @@ import { MAX_AUTH_FILE_SIZE } from '@/utils/constants';
 import { downloadBlob } from '@/utils/download';
 import {
   getTypeLabel,
-  isAutoDisableableAuthFile,
   isProblemAuthFile,
   isRuntimeOnlyAuthFile,
 } from '@/features/authFiles/constants';
@@ -74,7 +73,6 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
   const filesRef = useRef<AuthFileItem[]>([]);
   const statusUpdatingRef = useRef<Record<string, boolean>>({});
   const batchStatusPendingRef = useRef(false);
-  const autoDisablePendingNamesRef = useRef<Set<string>>(new Set());
   const selectionCount = selectedFiles.size;
   const toggleSelect = useCallback((name: string) => {
     setSelectedFiles((prev) => {
@@ -289,54 +287,14 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
     setError('');
     try {
       const data = await authFilesApi.list();
-      const nextFiles = data?.files || [];
-      setFiles(nextFiles);
-
-      const autoDisableCandidates = nextFiles.filter(
-        (file) =>
-          isAutoDisableableAuthFile(file) &&
-          statusUpdatingRef.current[file.name] !== true &&
-          !autoDisablePendingNamesRef.current.has(file.name)
-      );
-
-      if (autoDisableCandidates.length > 0 && !batchStatusPendingRef.current) {
-        const candidateNames = autoDisableCandidates.map((file) => file.name);
-        candidateNames.forEach((name) => autoDisablePendingNamesRef.current.add(name));
-
-        try {
-          const { successCount, failCount } = await batchUpdateStatus(candidateNames, false, {
-            skipDeselectAll: true,
-            suppressNotifications: true,
-            sourceFiles: nextFiles,
-          });
-
-          if (successCount > 0 && failCount === 0) {
-            showNotification(
-              t('auth_files.batch_auto_disable_problem_success', {
-                count: successCount,
-              }),
-              'warning'
-            );
-          } else if (successCount > 0 || failCount > 0) {
-            showNotification(
-              t('auth_files.batch_auto_disable_problem_partial', {
-                success: successCount,
-                failed: failCount,
-              }),
-              'warning'
-            );
-          }
-        } finally {
-          candidateNames.forEach((name) => autoDisablePendingNamesRef.current.delete(name));
-        }
-      }
+      setFiles(data?.files || []);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : t('notification.refresh_failed');
       setError(errorMessage);
     } finally {
       setLoading(false);
     }
-  }, [batchUpdateStatus, showNotification, t]);
+  }, [t]);
 
   const handleUploadClick = useCallback(() => {
     fileInputRef.current?.click();

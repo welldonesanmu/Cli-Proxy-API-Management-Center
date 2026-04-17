@@ -588,8 +588,6 @@
     "status_disabled_success": "已停用 \"{{name}}\"",
     "batch_status_success": "已成功更新 {{count}} 个文件",
     "batch_status_partial": "成功 {{success}} 个，失败 {{failed}} 个",
-    "batch_auto_disable_problem_success": "已自动禁用 {{count}} 个额度用完账户",
-    "batch_auto_disable_problem_partial": "自动禁用额度用完账户结果：成功 {{success}} 个，失败 {{failed}} 个",
     "batch_delete_title": "删除选中文件",
     "batch_delete_confirm": "确定要删除 {{count}} 个文件吗？",
     "batch_selected": "已选 {{count}} 项",

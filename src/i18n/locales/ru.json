@@ -584,8 +584,6 @@
     "status_disabled_success": "\"{{name}}\" отключён",
     "batch_status_success": "{{count}} файлов обновлено",
     "batch_status_partial": "{{success}} обновлено, {{failed}} не удалось",
-    "batch_auto_disable_problem_success": "Автоматически отключено {{count}} аккаунтов с исчерпанным лимитом",
-    "batch_auto_disable_problem_partial": "Результат автоотключения аккаунтов с исчерпанным лимитом: успешно {{success}}, ошибок {{failed}}",
     "batch_delete_title": "Удалить выбранные файлы",
     "batch_delete_confirm": "Удалить {{count}} файлов?",
     "batch_selected": "{{count}} выбрано",
